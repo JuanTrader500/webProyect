@@ -4,38 +4,65 @@ const User = require('./models/user.model');
 const Project = require('./models/project.model');
 const UserProject = require('./models/userProject.model');
 
+const DEMO_TAG = 'DEMO_VALIDATION_';
+
+async function cleanupDemoData() {
+    console.log('Limpiando datos de ejecuciones anteriores de la demo...');
+    try {
+        // Borramos en orden inverso a las FKs para evitar errores de integridad
+        await pool.query('DELETE FROM usuarios_proyectos WHERE usuario_id IN (SELECT id FROM usuarios WHERE nombre LIKE $1)', [`${DEMO_TAG}%`]);
+        await pool.query('DELETE FROM proyectos WHERE nombre LIKE $1', [`${DEMO_TAG}%`]);
+        await pool.query('DELETE FROM usuarios WHERE nombre LIKE $1', [`${DEMO_TAG}%`]);
+        await pool.query('DELETE FROM roles WHERE nombre LIKE $1', [`${DEMO_TAG}%`]);
+        console.log('Limpieza completada exitosamente.');
+    } catch (error) {
+        console.error('Error durante la limpieza:', error.message);
+    }
+}
+
 async function runDemo() {
-    console.log('--- 🚀 INICIANDO DEMO DE VALIDACIÓN ---\n');
+    console.log('--- INICIANDO DEMO DE VALIDACIÓN ---\n');
 
     try {
+        // 0. Limpieza inicial
+        await cleanupDemoData();
+
         // 1. Crear un Rol personalizado
-        console.log('1. Creando Rol "Supervisor"...');
-        const role = await Role.create('Supervisor');
-        console.log('✅ Rol creado:', role);
+        const roleName = `${DEMO_TAG}Supervisor`;
+        console.log(`\n1. Creando Rol "${roleName}"...`);
+        
+        // Intentamos buscar si ya existe (aunque la limpieza debería borrarlo)
+        let role = await Role.findByNombre(roleName);
+        if (!role) {
+            role = await Role.create(roleName);
+        }
+        console.log('Rol listo:', role);
 
         // 2. Crear un Usuario asociado a ese rol
-        console.log('\n2. Creando Usuario "Demo User"...');
+        const userName = `${DEMO_TAG}User_${Date.now()}`;
+        console.log(`\n2. Creando Usuario "${userName}"...`);
         const user = await User.create({
-            nombre: 'Demo User',
+            nombre: userName,
             email: `demo_${Date.now()}@example.com`,
             password: 'password123',
             rol_id: role.id,
             administrador_id: null
         });
-        console.log('✅ Usuario creado (Contraseña hasheada en BD):', user);
+        console.log('Usuario creado (Contraseña hasheada en BD):', user);
 
         // 3. Crear un Proyecto
-        console.log('\n3. Creando Proyecto "Proyecto Demo"...');
+        const projectName = `${DEMO_TAG}Project_${Date.now()}`;
+        console.log(`\n3. Creando Proyecto "${projectName}"...`);
         const project = await Project.create({
-            nombre: 'Proyecto Demo Alpha',
+            nombre: projectName,
             administrador_id: user.id
         });
-        console.log('✅ Proyecto creado:', project);
+        console.log('Proyecto creado:', project);
 
         // 4. Vincular Usuario al Proyecto
         console.log('\n4. Vinculando Usuario al Proyecto...');
         await UserProject.assign(user.id, project.id);
-        console.log('✅ Vínculo creado correctamente.');
+        console.log('Vínculo creado correctamente.');
 
         // 5. Validación Final con JOIN (Prueba de Integridad)
         console.log('\n5. Validando Integridad de Datos (JOIN)...');
@@ -50,19 +77,18 @@ async function runDemo() {
         const { rows } = await pool.query(query, [user.id]);
         
         if (rows.length > 0) {
-            console.log('✅ TODO CORRECTO. Resultado de la consulta:');
+            console.log('TODO CORRECTO. Resultado de la consulta:');
             console.table(rows);
         } else {
-            console.log('❌ Error: No se encontraron los datos vinculados.');
+            console.log('Error: No se encontraron los datos vinculados.');
         }
 
     } catch (error) {
-        console.error('\n❌ ERROR DURANTE LA DEMO:', error.message);
+        console.error('\nERROR DURANTE LA DEMO:', error.message);
         if (error.detail) console.error('Detalle:', error.detail);
     } finally {
-        console.log('\n--- 🏁 DEMO FINALIZADA ---');
-        console.log('💡 TIP: Ahora puedes reiniciar tu contenedor de Docker y ejecutar este script nuevamente');
-        console.log('o usar un script de verificación para comprobar la permanencia de los datos.');
+        console.log('\n--- DEMO FINALIZADA ---');
+        console.log('TIP: Puedes ejecutar este script múltiples veces; los datos anteriores se limpiarán automáticamente.');
         await pool.end();
     }
 }

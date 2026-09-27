@@ -1,14 +1,25 @@
-// Configuración de conexión de base de datos con Mongoose
-const mongoose = require('mongoose');
+const { Pool } = require('pg');
+const dotenv = require('dotenv');
 
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI);
-    console.log('MongoDB Conectado: ' + conn.connection.host);
-  } catch (error) {
-    console.error('Error al conectar a MongoDB: ' + error.message);
-    process.exit(1);
-  }
-};
+// Cargo las variables de entorno para que el pool tenga los datos de conexión
+dotenv.config();
 
-module.exports = connectDB;
+// Creo el pool de conexión. Uso las variables que están en el .env
+const pool = new Pool({
+    user: process.env.POSTGRES_USER,
+    host: process.env.POSTGRES_HOST || 'localhost',
+    database: process.env.POSTGRES_DB,
+    password: process.env.POSTGRES_PASSWORD,
+    port: process.env.POSTGRES_PORT || 5432,
+});
+
+// Pruebo la conexión al iniciar para saber si hay errores de credenciales
+pool.on('connect', () => {
+    // Solo para debug, me avisa que una conexión se abrió con éxito
+});
+
+pool.on('error', (err) => {
+    console.error('Error inesperado en el pool de Postgres', err);
+});
+
+module.exports = pool;
